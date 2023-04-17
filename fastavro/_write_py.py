@@ -369,10 +369,11 @@ BLOCK_WRITERS = {
 }
 
 
-def _missing_codec_lib(codec, library):
+def _missing_codec_lib(codec, *libraries):
     def missing(encoder, block_bytes, compression_level):
         raise ValueError(
-            f"{codec} codec is supported but you need to install {library}"
+            f"{codec} codec is supported but you need to install one of the "
+            + f"following libraries: {libraries}"
         )
 
     return missing
@@ -380,7 +381,7 @@ def _missing_codec_lib(codec, library):
 
 def snappy_write_block(encoder, block_bytes, compression_level):
     """Write block in "snappy" codec."""
-    data = snappy.compress(block_bytes)
+    data = snappy_compress(block_bytes)
     encoder.write_long(len(data) + 4)  # for CRC
     encoder._fo.write(data)
     encoder.write_crc32(block_bytes)
@@ -388,8 +389,19 @@ def snappy_write_block(encoder, block_bytes, compression_level):
 
 try:
     import snappy
+
+    snappy_compress = snappy.compress
 except ImportError:
-    BLOCK_WRITERS["snappy"] = _missing_codec_lib("snappy", "python-snappy")
+    try:
+        from cramjam import snappy
+
+        snappy_compress = snappy.compress_raw
+    except ImportError:
+        BLOCK_WRITERS["snappy"] = _missing_codec_lib(
+            "snappy", "python-snappy", "cramjam"
+        )
+    else:
+        BLOCK_WRITERS["snappy"] = snappy_write_block
 else:
     BLOCK_WRITERS["snappy"] = snappy_write_block
 
